@@ -1,0 +1,97 @@
+---
+title: "Initial analysis"
+author: "João Vitor"
+date: "06/06/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Paper data acquisition
+
+Loading necessary packages
+
+```{r}
+library(tidyverse)
+library(rvest)
+library(httr)
+```
+
+This functions acquires papers from a selected country
+
+```{r get-country-papers}
+get_country_papers <- function(country) {
+  url <- paste0('https://www.ncbi.nlm.nih.gov/research/coronavirus-api/export/tsv?filters=%7B%22countries%22%3A%5B%22', 
+                country,
+                '%22%5D%7D')
+  
+  read_tsv(url, skip = 31) %>% 
+    mutate(paper_link = paste0("https://pubmed.ncbi.nlm.nih.gov/", pmid))
+}
+```
+
+This one gets the paper's abstracts from pubmed, use this with care, since
+pubmed has, justifiably, strict rate limiting. I've commented out a get-around using sys.sleep
+that is necessary for larger queries.
+
+```{r get_paper_abstract}
+get_paper_abstract <- function(link) {
+  
+  message(paste("Current abstract:",link))
+  
+  read_html(link) %>% 
+    html_nodes(css = "#en-abstract > p:nth-child(1)") %>% 
+    html_text() %>% 
+    str_trim()
+  
+  #Sys.sleep(20)
+}
+```
+
+```{r}
+get_doi_from_pmid <- function(pmid) {
+
+  pmid <- as.character(pmid)
+  
+  url <- paste0("https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id=",
+                pmid,
+                "&retmode=json")
+  
+  jsonlite::fromJSON(url)$result %>% 
+    '[['(pmid) %>% 
+    '[['('articleids') %>% 
+    filter(idtype == 'doi') %>% 
+    pull(value)
+}
+```
+
+```{r}
+# GET("https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id=32480061&retmode=json") %>% 
+    a <- jsonlite::fromJSON("https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id=32480061&retmode=json")$result %>% 
+    '[['('32480061') %>% 
+    '[['('articleids') %>% 
+    filter(idtype == 'doi') %>% 
+    pull(value)
+    '[['("result") %>% 
+    '[['('32480061') %>% 
+    '[['("articleids") %>% 
+```
+
+Let's take a look at Brazil first.
+
+```{r}
+br <- get_country_papers('Brazil') %>% 
+  mutate(abstract = map(paper_link, possibly(get_paper_abstract, otherwise = NA)),
+         doi = map_chr(pmid, possibly(get_doi_from_pmid, otherwise = NA)))
+```
+
+## Named entity recognition workflow
+
+```{r}
+library(spacyr)
+
+spacy_initialize(model = "en_ner_jnlpba_md", condaenv = 'spacy-proc')
+```
+
