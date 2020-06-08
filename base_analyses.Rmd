@@ -67,22 +67,10 @@ get_doi_from_pmid <- function(pmid) {
 }
 ```
 
-```{r}
-# GET("https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id=32480061&retmode=json") %>% 
-    a <- jsonlite::fromJSON("https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id=32480061&retmode=json")$result %>% 
-    '[['('32480061') %>% 
-    '[['('articleids') %>% 
-    filter(idtype == 'doi') %>% 
-    pull(value)
-    '[['("result") %>% 
-    '[['('32480061') %>% 
-    '[['("articleids") %>% 
-```
-
 Let's take a look at Brazil first.
 
 ```{r}
-br <- get_country_papers('Brazil') %>% 
+br <- get_country_papers('China') %>% 
   mutate(abstract = map(paper_link, possibly(get_paper_abstract, otherwise = NA)),
          doi = map_chr(pmid, possibly(get_doi_from_pmid, otherwise = NA)))
 ```
@@ -92,6 +80,54 @@ br <- get_country_papers('Brazil') %>%
 ```{r}
 library(spacyr)
 
-spacy_initialize(model = "en_ner_jnlpba_md", condaenv = 'spacy-proc')
+spacy_initialize(model = "en_core_sci_lg", condaenv = "~/miniconda3/envs/spacy-proc")
+```
+
+```{r}
+
+pubtator_annot <- jsonlite::fromJSON("./litcovid2BioCJSON")[[2]] %>% 
+  as_tibble() %>% 
+  head(2000)
+
+```
+
+```{r}
+texts <- c()
+
+for (t in pubtator_annot$passages) {
+  catted <- paste(t[[3]], collapse = ' ')
+  texts <- append(texts, catted)
+}
+
+pubtator_annot <- pubtator_annot %>% 
+  select(-c(`_id`, authors, infons)) %>% 
+  mutate(text = texts) %>%
+  unnest(cols = c(tags, accessions))
+```
+
+```{r}
+library(tidytext)
+
+# https://github.com/dgrtwo/data-screencasts/blob/master/cord-19.Rmd
+
+tokenize_scispacy_entities <- function(data, text) {
+  spacy_extract_entity(text) %>%
+    group_by(doc_id) %>%
+    nest() %>%
+    pull(data) %>%
+    map("text") %>%
+    map(str_to_lower)
+}
+
+pubt_entities <- pubtator_annot %>% 
+  select(id, text) %>% 
+  tokenize_scispacy_entities(text = pubtator_annot$text)
+
+i <- 1
+while(i < length(pubt_entities)) {
+    pubt_entities[[i]]$id <- pubtator_annot$pmid[i]
+    i <- i + 1
+}
+
 ```
 
