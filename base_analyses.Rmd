@@ -106,7 +106,6 @@ pubtator_annot <- pubtator_annot %>%
 ```
 
 ```{r}
-library(tidytext)
 
 # https://github.com/dgrtwo/data-screencasts/blob/master/cord-19.Rmd
 
@@ -121,13 +120,13 @@ tokenize_scispacy_entities <- function(data, text) {
 
 pubt_entities <- pubtator_annot %>% 
   select(id, text) %>% 
-  tokenize_scispacy_entities(text = pubtator_annot$text)
+  tokenize_scispacy_entities(text = pubtator_annot$text) %>% 
+  tibble() %>% 
+  rename_at(vars(starts_with(".")), funs(str_replace(., ".", "entities"))) %>% 
+  mutate(pmid = pubtator_annot$pmid) %>% 
+  unnest_longer(entities)
 
-i <- 1
-while(i < length(pubt_entities)) {
-    pubt_entities[[i]]$id <- pubtator_annot$pmid[i]
-    i <- i + 1
-}
+
 
 ```
 
