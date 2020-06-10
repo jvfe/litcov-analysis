@@ -1,7 +1,7 @@
 ---
-title: "Initial analysis"
+title: "get_literature_by_country"
 author: "João Vitor"
-date: "06/06/2020"
+date: "10/06/2020"
 output: html_document
 ---
 
@@ -50,6 +50,8 @@ get_paper_abstract <- function(link) {
 }
 ```
 
+This gets the doi using entrez.
+
 ```{r}
 get_doi_from_pmid <- function(pmid) {
 
@@ -70,63 +72,9 @@ get_doi_from_pmid <- function(pmid) {
 Let's take a look at Brazil first.
 
 ```{r}
-br <- get_country_papers('China') %>% 
+br <- get_country_papers('Brazil') %>% 
   mutate(abstract = map(paper_link, possibly(get_paper_abstract, otherwise = NA)),
          doi = map_chr(pmid, possibly(get_doi_from_pmid, otherwise = NA)))
 ```
 
-## Named entity recognition workflow
-
-```{r}
-library(spacyr)
-
-spacy_initialize(model = "en_core_sci_lg", condaenv = "~/miniconda3/envs/spacy-proc")
-```
-
-```{r}
-
-pubtator_annot <- jsonlite::fromJSON("./litcovid2BioCJSON")[[2]] %>% 
-  as_tibble() %>% 
-  head(2000)
-
-```
-
-```{r}
-texts <- c()
-
-for (t in pubtator_annot$passages) {
-  catted <- paste(t[[3]], collapse = ' ')
-  texts <- append(texts, catted)
-}
-
-pubtator_annot <- pubtator_annot %>% 
-  select(-c(`_id`, authors, infons)) %>% 
-  mutate(text = texts) %>%
-  unnest(cols = c(tags, accessions))
-```
-
-```{r}
-
-# https://github.com/dgrtwo/data-screencasts/blob/master/cord-19.Rmd
-
-tokenize_scispacy_entities <- function(data, text) {
-  spacy_extract_entity(text) %>%
-    group_by(doc_id) %>%
-    nest() %>%
-    pull(data) %>%
-    map("text") %>%
-    map(str_to_lower)
-}
-
-pubt_entities <- pubtator_annot %>% 
-  select(id, text) %>% 
-  tokenize_scispacy_entities(text = pubtator_annot$text) %>% 
-  tibble() %>% 
-  rename_at(vars(starts_with(".")), funs(str_replace(., ".", "entities"))) %>% 
-  mutate(pmid = pubtator_annot$pmid) %>% 
-  unnest_longer(entities)
-
-
-
-```
 

@@ -1,0 +1,62 @@
+---
+title: "Initial analysis"
+author: "João Vitor"
+date: "06/06/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Named entity recognition workflow
+
+```{r}
+library(tidyverse)
+library(spacyr)
+
+spacy_initialize(model = "en_ner_craft_md", condaenv = "~/miniconda3/envs/spacy-proc")
+```
+
+```{r}
+
+pubtator_annot <- jsonlite::fromJSON("./litcovid2BioCJSON")[[2]] %>% 
+  as_tibble() %>% 
+  head(4000)
+
+```
+
+```{r}
+texts <- c()
+
+for (t in pubtator_annot$passages) {
+  catted <- paste(t[[3]], collapse = ' ')
+  texts <- append(texts, catted)
+}
+
+pubtator_annot <- pubtator_annot %>% 
+  select(-c(`_id`, authors, infons)) %>% 
+  mutate(text = texts) %>%
+  unnest(cols = c(tags, accessions))
+```
+
+```{r}
+
+# https://github.com/dgrtwo/data-screencasts/blob/master/cord-19.Rmd
+
+# tokenize_scispacy_entities <- function(data, text) {
+#   spacy_extract_entity(text) %>%
+#     group_by(doc_id) %>%
+#     nest() %>%
+#     pull(data) %>%
+#     map("text") %>%
+#     map(str_to_lower)
+# }
+
+pubt_entities <- spacy_extract_entity(pubtator_annot$text) 
+
+pubt_entities %>%  
+  count(ent_type, str_to_lower(text), sort = TRUE) %>% 
+  View()
+```
+
