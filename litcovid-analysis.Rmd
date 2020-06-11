@@ -1,5 +1,5 @@
 ---
-title: "Initial analysis"
+title: "Analysis Workflow for whole dataset"
 author: "João Vitor"
 date: "06/06/2020"
 output: html_document
@@ -25,7 +25,7 @@ spacy_initialize(model = "en_ner_craft_md", condaenv = "~/miniconda3/envs/spacy-
 
 ```{r loading-data}
 
-litcovid <- jsonlite::fromJSON("./litcovid2BioCJSON")[[2]] %>% 
+litcovid <- jsonlite::fromJSON("./data/raw/litcovid2BioCJSON")[[2]] %>% 
   as_tibble() %>% 
   sample_n(9000)
 
@@ -104,6 +104,7 @@ top_15_entities <- entity_counts %>%
   top_n(15) %>% 
   ungroup() %>% 
   # Taxon is better suited on it's own plot to avoid a huge change in the scale
+  filter(entity_type_name != "NCBITaxonomy Entity")
   mutate(text = reorder_within(term, n, entity_type_name))
 
 top_by_tfidf <- entity_counts %>% 
@@ -111,7 +112,6 @@ top_by_tfidf <- entity_counts %>%
   group_by(entity_type_name) %>% 
   top_n(15, tf_idf) %>% 
   ungroup() %>% 
-  # Taxon is better suited on it's own plot to avoid a huge change in the scale
   mutate(text = reorder_within(term, n, entity_type_name))
 ```
 
@@ -141,3 +141,8 @@ ggplot(top_by_tfidf, aes(y = text, x = tf_idf, fill = entity_type_name)) +
         axis.text.x = element_blank(),
         axis.ticks.x = element_blank()) 
 ```
+
+```{r}
+save(litcovid_bigrams, entity_counts, file = "./data/processed/objects_for_plotting.rda")
+```
+

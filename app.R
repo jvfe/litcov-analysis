@@ -1,47 +1,63 @@
-#
-# This is a Shiny web application. You can run the application by clicking
-# the 'Run App' button above.
-#
-# Find out more about building applications with Shiny here:
-#
-#    http://shiny.rstudio.com/
-#
-
 library(shiny)
+library(shinydashboard)
+library(tidyverse)
+library(ggraph)
 
-# Define UI for application that draws a histogram
-ui <- fluidPage(
+load("./data/processed/objects_for_plotting.rda")
 
-    # Application title
-    titlePanel("Old Faithful Geyser Data"),
-
-    # Sidebar with a slider input for number of bins 
-    sidebarLayout(
-        sidebarPanel(
-            sliderInput("bins",
-                        "Number of bins:",
-                        min = 1,
-                        max = 50,
-                        value = 30)
+ui <- dashboardPage(
+    dashboardHeader(title = "LITCovid19 Text Analysis"),
+    dashboardSidebar(),
+    dashboardBody(
+        fluidRow(
+            box(sliderInput("slider", "Number of observations:", 25, 150, 50))
         ),
-
-        # Show a plot of the generated distribution
-        mainPanel(
-           plotOutput("distPlot")
+        fluidRow(
+                    box(plotOutput("network", height = 700), height = 800, width = "90%")
         )
     )
 )
-
-# Define server logic required to draw a histogram
 server <- function(input, output) {
-
-    output$distPlot <- renderPlot({
-        # generate bins based on input$bins from ui.R
-        x    <- faithful[, 2]
-        bins <- seq(min(x), max(x), length.out = input$bins + 1)
-
-        # draw the histogram with the specified number of bins
-        hist(x, breaks = bins, col = 'darkgray', border = 'white')
+    
+    set.seed(122)
+    
+    output$network <- renderPlot({
+        
+        bigram_graph <- litcovid_bigrams %>% 
+            filter(n > input$slider) %>%
+            graph_from_data_frame() 
+        
+        a <- grid::arrow(type = "closed", length = unit(.15, "inches"))
+        
+        bigram_graph %>% 
+            ggraph(layout = "fr") +
+            geom_edge_link(aes(edge_alpha = n), show.legend = FALSE, arrow = a) +
+            geom_node_point(color = "#D8BFD8", size = 3) +
+            geom_node_text(aes(label = name), check_overlap = TRUE, vjust = 1, hjust = 1) +
+            theme_void()
+    })
+    
+    output$tfidf <- renderPlot({
+        
+        top_by_tfidf <- entity_counts %>% 
+            bind_tf_idf(term = term, document = entity_type_name, n = n) %>% 
+            group_by(entity_type_name) %>% 
+            top_n(15, tf_idf) %>% 
+            ungroup() %>% 
+            mutate(text = reorder_within(term, n, entity_type_name))
+        
+        ggplot(top_by_tfidf, aes(y = text, x = tf_idf, fill = entity_type_name)) + 
+            geom_col() + 
+            guides(fill = FALSE) +
+            labs(x = "Tf-Idf", y = NULL, 
+                 title = "15 most frequent entities",
+                 subtitle = "Grouped by entity type") +
+            facet_wrap(~ entity_type_name, scales = "free_y") +
+            scale_y_reordered() +
+            scale_fill_viridis_d(option = 'magma', end = 0.8) +
+            theme(plot.title = element_text(face = "bold"),
+                  axis.text.x = element_blank(),
+                  axis.ticks.x = element_blank()) 
     })
 }
 
