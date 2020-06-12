@@ -1,19 +1,53 @@
 library(shiny)
 library(shinydashboard)
 library(tidyverse)
+library(tidytext)
+library(igraph)
 library(ggraph)
+theme_set(theme_bw(base_family = "Roboto condensed"))
 
 load("./data/processed/objects_for_plotting.rda")
 
 ui <- dashboardPage(
     dashboardHeader(title = "LITCovid19 Text Analysis"),
-    dashboardSidebar(),
+    dashboardSidebar(
+        sidebarMenu(
+            menuItem("Entities", tabName = "Entities", icon = icon("bar-chart")),
+            menuItem("Network", tabName = "Network", icon = icon("arrows-alt"))
+        )
+    ),
     dashboardBody(
-        fluidRow(
-            box(sliderInput("slider", "Number of observations:", 25, 150, 50))
-        ),
-        fluidRow(
-                    box(plotOutput("network", height = 700), height = 800, width = "90%")
+        tabItems(
+            tabItem(tabName = "Entities",
+                    fluidRow(
+                        box(title = "Filter data", status = "warning", 
+                            collapsible = TRUE, solidHeader = TRUE,
+                            sliderInput("slider_tf", "Number of observations:", 5, 25, 10)),
+                        box(title = "Table", status = "warning", 
+                            collapsible = TRUE, solidHeader = TRUE,
+                            tableOutput("tfidf_data"))
+                    ),
+                    fluidRow(
+                        box(title = "15 most frequent entities", status = "primary", solidHeader = TRUE,
+                            HTML("<b>Grouped by entity type</b></br>"), br(),
+                            plotOutput("tfidf", height = 700), height = 800, width = "90%")
+                    )
+            ),
+            
+            tabItem(tabName = "Network",
+                fluidRow(
+                    box(title = "Filter data", status = "warning", 
+                        collapsible = TRUE, solidHeader = TRUE,
+                        sliderInput("slider_net", "Number of observations:", 25, 150, 50)),
+                    box(title = "Table", status = "warning", 
+                        collapsible = TRUE, solidHeader = TRUE,
+                        tableOutput("net_data"))
+                ),
+                fluidRow(
+                    box(title = "Bigram Network", status = "primary", solidHeader = TRUE,
+                        plotOutput("network", height = 700), height = 800, width = "90%")
+                )
+            )
         )
     )
 )
@@ -21,10 +55,17 @@ server <- function(input, output) {
     
     set.seed(122)
     
+    output$net_data <- renderTable({
+        litcovid_bigrams %>% 
+            filter(n > input$slider_net) %>%
+            setNames(c("Word 1", "Word 2", "Count")) %>% 
+            head(5)
+    }, width = "100%")
+    
     output$network <- renderPlot({
         
         bigram_graph <- litcovid_bigrams %>% 
-            filter(n > input$slider) %>%
+            filter(n > input$slider_net) %>%
             graph_from_data_frame() 
         
         a <- grid::arrow(type = "closed", length = unit(.15, "inches"))
@@ -37,21 +78,30 @@ server <- function(input, output) {
             theme_void()
     })
     
+    output$tfidf_data <- renderTable({
+        entity_counts %>% 
+            bind_tf_idf(term = term, document = entity_type_name, n = n) %>% 
+            group_by(entity_type_name) %>% 
+            select(-c(tf, idf)) %>% 
+            setNames(c("Entity Name", "Entity", "Count", "Tf-Idf")) %>% 
+            top_n(input$slider_tf, `Tf-Idf`) %>% 
+            ungroup() %>% 
+            head(5)
+    }, width = "100%")
+    
     output$tfidf <- renderPlot({
         
         top_by_tfidf <- entity_counts %>% 
             bind_tf_idf(term = term, document = entity_type_name, n = n) %>% 
             group_by(entity_type_name) %>% 
-            top_n(15, tf_idf) %>% 
+            top_n(input$slider_tf, tf_idf) %>% 
             ungroup() %>% 
             mutate(text = reorder_within(term, n, entity_type_name))
         
         ggplot(top_by_tfidf, aes(y = text, x = tf_idf, fill = entity_type_name)) + 
             geom_col() + 
             guides(fill = FALSE) +
-            labs(x = "Tf-Idf", y = NULL, 
-                 title = "15 most frequent entities",
-                 subtitle = "Grouped by entity type") +
+            labs(x = "Tf-Idf", y = NULL) +
             facet_wrap(~ entity_type_name, scales = "free_y") +
             scale_y_reordered() +
             scale_fill_viridis_d(option = 'magma', end = 0.8) +
